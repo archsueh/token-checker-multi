@@ -1,122 +1,73 @@
 # Token Checker
 
-macOS のメニューバーに **Claude Code** と **Codex** の使用率を常時表示する個人向け macOS アプリ。
+macOS のメニューバーに Claude Code と Codex の使用率を常時表示する macOS アプリケーション。
 
 <p align="center">
-  <img src=".github/assets/menubar.svg" alt="メニューバーの表示例" width="640"/>
+  <img src=".github/assets/menubar.svg" alt="メニューバー表示" width="640"/>
 </p>
 
-- ✅ Claude Code と Codex の **5 時間ウィンドウ** 使用率を一目で
-- ✅ クリックで詳細ポップオーバー（リセット時刻、週次使用率も）
-- ✅ ネイティブ Swift / SwiftUI 製、常駐メモリ **数十 MB**、idle CPU **0 %**
-- ✅ Anthropic / OpenAI の API キー不要（既存の `claude login` / `codex login` を間借り）
-- ✅ App Store 配布ではない個人ツール。`/Applications` に置いて普通に使う
+## 概要
 
----
-
-## 目次
-
-- [できること](#できること)
-- [動作要件](#動作要件)
-- [ビルドとインストール](#ビルドとインストール)
-- [使い方](#使い方)
-- [仕組み](#仕組み)
-- [トラブルシューティング](#トラブルシューティング)
-- [プライバシー](#プライバシー)
-- [謝辞 / ライセンス](#謝辞--ライセンス)
-
----
-
-## できること
-
-### メニューバー本体
-
-メニューバーには **2 つのドーナツ + %** が常に表示されます。
-
-| 表示 | 意味 |
-| --- | --- |
-| 左のドーナツ + % | **Claude Code** の 5 時間ウィンドウ使用率 |
-| 右のドーナツ + % | **Codex** の 5 時間ウィンドウ使用率 |
-| 色 | 緑 (<50%) → 橙 (50-75%) → 赤 (>75%) |
-
-### ポップオーバー（クリック時）
-
-<p align="center">
-  <img src=".github/assets/popover.svg" alt="ポップオーバーの表示例" width="360"/>
-</p>
-
-- 各サービスの **5 時間ウィンドウ** 使用率（プログレスバー + リセットまでの残り時間）
-- **週次** ウィンドウ使用率（補助情報、Claude は Sonnet 専用枠も）
-- 「Claude にログイン」「Codex にログイン」ボタン（必要な時だけ使う）
-- 更新間隔の変更（30 秒 〜 10 分）
-- ログイン時の自動起動トグル
-
----
+ターミナルで `claude login` / `codex login` を完了済みのアカウントに対し、Anthropic の OAuth エンドポイントおよび `codex app-server` の JSON-RPC を経由してレート制限情報を取得する。取得結果はメニューバーに 2 個のドーナツチャートと数値で表示され、クリックでポップオーバーに 5 時間ウィンドウと週次ウィンドウの詳細を展開する。アプリケーション本体は認証情報を保持せず、API キーも要しない。
 
 ## 動作要件
 
-| 要件 | 内容 |
+| 項目 | 値 |
 | --- | --- |
-| macOS | **14 Sonoma 以上** |
-| Mac | Apple Silicon を想定（Intel でも動くはず） |
-| Swift | 5.9 以上（Xcode Command Line Tools か Xcode） |
-| Claude Code CLI | `claude` コマンドが `claude login` 済みであること |
-| Codex CLI | `/opt/homebrew/bin/codex` 等で `codex login` 済みであること |
+| macOS | 14 Sonoma 以上 |
+| Swift | 5.9 以上（Xcode Command Line Tools で可） |
+| Claude Code CLI | `claude login` 済み |
+| Codex CLI | `codex login` 済み |
 
-> Codex CLI が未インストールでも Claude 側は動きます。逆も同様。
+Claude Code と Codex のいずれかが欠けていても、もう一方は動作する。
 
----
-
-## ビルドとインストール
-### 1. リポジトリへ移動
+## インストール
 
 ```bash
 cd ~/Documents/program/token-checker
-```
-
-### 2. ビルド + `/Applications` への配置（1 コマンド）
-
-```bash
 ./Scripts/build.sh --install
 ```
 
-これだけで以下が走ります：
+リリースビルド、`.app` バンドル組立、ad-hoc 署名、`/Applications` への配置を 1 コマンドで実施する。ユーザ領域に配置する場合は `--install` を `--user-install` に置き換える。
 
-1. `swift build -c release` — Swift のリリースビルド
-2. `.app` バンドル組立（`Contents/MacOS/` `Contents/Info.plist`）
-3. `codesign` で署名（自動的に ad-hoc か Developer ID を選択）
-4. `/Applications/TokenChecker.app` にコピー
+初回起動時は Gatekeeper の警告が表示される。`/Applications/TokenChecker.app` を右クリックし `開く → 開く` で一度許可することで以降は通常起動する。
 
-> 自分の `~/Applications/` に入れたい場合は `--install` の代わりに `--user-install`。
+## 使用方法
 
-### 3. 起動
-
-Finder で **アプリケーション → TokenChecker.app** をダブルクリック。
----
-
-## 使い方
-
-### 前提: CLI でログイン
-
-このアプリは **アプリ内ログイン UI を持ちません**。代わりに、すでにターミナルでログイン済みの Claude Code / Codex の認証情報を借りて使います。
-
-まだログインしていなければ、ターミナルで：
+事前にターミナルで以下を実行し、両サービスにログインしておく。
 
 ```bash
-claude login    # Claude Code (Anthropic) でログイン
-codex login     # Codex (OpenAI) でログイン
+claude login
+codex login
 ```
 
-ブラウザが開いて OAuth フローが走ります。完了するとそれぞれ Keychain / `~/.codex/auth.json` にトークンが保存されます。
+いずれもブラウザの OAuth フローを経て、Keychain または `~/.codex/auth.json` にトークンが保存される。アプリは保存されたトークンを参照するため、ログインは CLI 側で 1 度行えばよい。
 
-ポップオーバー内の「ログイン」ボタンは、上の `claude login` / `codex login` を **新しいターミナルで実行する shortcut** です。日常的には使わなくて OK。
+アプリを起動するとメニューバー右側にドーナツが 2 個並ぶ。左が Claude Code (`✦`)、右が Codex (`</>`) の 5 時間ウィンドウ使用率を示し、色は使用率に応じて緑・橙・赤に変化する。
 
----
-### アンインストール
+<p align="center">
+  <img src=".github/assets/popover.svg" alt="ポップオーバー表示" width="320"/>
+</p>
+
+クリックで展開するポップオーバーには、5 時間ウィンドウと週次ウィンドウの使用率、リセットまでの残時間、更新間隔（30 秒〜10 分、既定 5 分）、ログイン時の自動起動トグルが含まれる。
+
+## データ取得経路
+
+- **Claude**: `/usr/bin/security` 経由で Keychain (`Claude Code-credentials`) から OAuth アクセストークンを取得し、`https://api.anthropic.com/api/oauth/usage` に対して `anthropic-beta: oauth-2025-04-20` ヘッダー付きで GET する。
+- **Codex**: `/opt/homebrew/bin/codex app-server` を子プロセスとして起動し、行区切り JSON-RPC 経由で `account/rateLimits/read` を呼ぶ。
+
+外部への通信は Claude の上記 1 エンドポイントのみで、Codex 側はローカル IPC に閉じる。
+
+## アンインストール
 
 ```bash
-# メニューバーから「終了」してから
+killall TokenChecker
 rm -rf /Applications/TokenChecker.app
-# UserDefaults 残骸（必要なら）
 defaults delete com.token-checker.app 2>/dev/null
 ```
+
+## ライセンスと謝辞
+データ取得手法は次のオープンソース実装を参考にした。
+
+- [s-age/ccmeter](https://github.com/s-age/ccmeter) — Anthropic OAuth usage エンドポイントの利用方法
+- [ml0-1337/codex-usage-menu](https://github.com/ml0-1337/codex-usage-menu) — `codex app-server` JSON-RPC スキーマ
