@@ -81,9 +81,12 @@ rm -rf "${APP_BUNDLE}"
 mkdir -p "${MACOS}" "${RESOURCES}"
 cp "${BUILD_DIR}/${PRODUCT}" "${MACOS}/"
 cp Resources/Info.plist "${CONTENTS}/"
-if [[ -f Resources/AppIcon.icns ]]; then
-    cp Resources/AppIcon.icns "${RESOURCES}/"
+# Info.plist の CFBundleIconFile=AppIcon は無条件のため、.icns 不在を静かに通さない．
+if [[ ! -f Resources/AppIcon.icns ]]; then
+    error "Resources/AppIcon.icns が見つかりません。Info.plist の CFBundleIconFile=AppIcon と整合させるため必須です。"
+    exit 1
 fi
+cp Resources/AppIcon.icns "${RESOURCES}/"
 
 if ! ${NO_SIGN}; then
     info "Code signing ${APP_BUNDLE}..."
