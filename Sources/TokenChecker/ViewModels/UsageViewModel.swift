@@ -5,8 +5,10 @@ import OSLog
 @MainActor
 @Observable
 final class UsageViewModel {
-    private let claudeProvider: UsageProvider
-    private let codexProvider: UsageProvider
+    // applicationWillTerminate から MainActor を経由せず shutdown を呼べるよう
+    // nonisolated 化する。providers 自体は immutable なので Sendable 違反は起きない。
+    private nonisolated let claudeProvider: UsageProvider
+    private nonisolated let codexProvider: UsageProvider
 
     var snapshot: UsageSnapshot = .empty
     var isLoading: Bool = false
@@ -33,6 +35,20 @@ final class UsageViewModel {
                 return
             }
             await refresh()
+        }
+    }
+
+    /// アプリ終了時に子プロセスや永続接続を解放するためのクロージャを返す。
+    ///
+    /// `@MainActor` final class である自身を `@Sendable` クロージャがキャプチャできないため
+    /// (Swift 6 strict-concurrency でエラー)、Sendable な providers だけを閉じ込めて公開する。
+    /// AppDelegate.applicationWillTerminate からは MainActor を経由せず呼ばれる。
+    nonisolated func makeShutdownHandler() -> @Sendable () async -> Void {
+        let claude = claudeProvider
+        let codex = codexProvider
+        return {
+            await claude.shutdown()
+            await codex.shutdown()
         }
     }
 

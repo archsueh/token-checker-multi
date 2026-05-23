@@ -4,16 +4,30 @@ import Foundation
 struct AnthropicUsageAPIClient: Sendable {
     static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 
+    /// Bearer トークンを保持したまま追従先へ再送されるのを防ぐため、
+    /// 専用 URLSession にリダイレクト不許可のデリゲートを噛ませる。
+    /// `URLSession.shared` の既定動作は Authorization ヘッダ込みでリダイレクトを追従するため、
+    /// `api.anthropic.com` が MITM / DNS 汚染で Location を返した場合に OAuth トークンが漏れる。
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 10
+        config.timeoutIntervalForResource = 15
+        return URLSession(
+            configuration: config,
+            delegate: NoRedirectDelegate.shared,
+            delegateQueue: nil
+        )
+    }()
+
     func fetch(accessToken: String) async throws -> AnthropicUsageDTO {
         var request = URLRequest(url: Self.usageURL)
         request.httpMethod = "GET"
-        request.timeoutInterval = 10
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await Self.session.data(for: request)
         } catch {
             throw DomainError.network(error.localizedDescription)
         }
@@ -42,6 +56,27 @@ struct AnthropicUsageAPIClient: Sendable {
         } catch {
             throw DomainError.decoding("Anthropic usage: \(error.localizedDescription)")
         }
+    }
+}
+
+// MARK: - URLSession delegate
+
+/// HTTP リダイレクトを一切許可しないデリゲート。
+/// 既定動作だと URLSession は Authorization ヘッダ付きでリダイレクトを追従するため、
+/// Bearer トークンが攻撃者ホストに漏れる経路を塞ぐ。`willPerformHTTPRedirection` で
+/// `completionHandler(nil)` を返すと URLSession は redirect を打ち切り、呼び出し側へ
+/// `URLError.cancelled` を投げる（このアプリではネットワークエラーとして扱う）。
+private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    static let shared = NoRedirectDelegate()
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
 
@@ -81,12 +116,15 @@ extension AnthropicUsageDTO.BucketDTO {
 }
 
 extension ISO8601DateFormatter {
-    static let standard: ISO8601DateFormatter = {
+    // ISO8601DateFormatter は Apple ドキュメント上 thread-safe だが Sendable に
+    // 非適合のため、Swift 6 strict-concurrency では static let がエラーになる。
+    // 初期化後は不変で並列読みのみ行うので nonisolated(unsafe) として扱う。
+    nonisolated(unsafe) static let standard: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f
     }()
-    static let withFractional: ISO8601DateFormatter = {
+    nonisolated(unsafe) static let withFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f

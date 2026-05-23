@@ -21,22 +21,36 @@ struct KeychainTokenSource: Sendable {
             "-w",
         ]
 
-        let stdout = Pipe()
-        process.standardOutput = stdout
-        process.standardError = Pipe()
+        let stdoutPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        // stderr は捨て読みもしない。FileHandle.nullDevice に向けてパイプバッファ詰まりと
+        // waitUntilExit のデッドロック経路をそもそも作らない。
+        process.standardError = FileHandle.nullDevice
 
+        // 旧実装は process.waitUntilExit() を同期で呼んでおり、Keychain ACL ダイアログ
+        // 表示中に Swift Concurrency の Cooperative Thread Pool を奪っていた。
+        // terminationHandler ベースで Continuation を解決し、async に整合させる。
         do {
-            try process.run()
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                process.terminationHandler = { _ in cont.resume() }
+                do {
+                    try process.run()
+                } catch {
+                    // run() が throw すると terminationHandler は発火しない。
+                    // ここで Continuation を一度だけ resume する。
+                    process.terminationHandler = nil
+                    cont.resume(throwing: DomainError.keychainTokenMissing)
+                }
+            }
         } catch {
             throw DomainError.keychainTokenMissing
         }
-        process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
             throw DomainError.keychainTokenMissing
         }
 
-        let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
         let payload: KeychainPayload
         do {
             payload = try JSONDecoder().decode(KeychainPayload.self, from: data)

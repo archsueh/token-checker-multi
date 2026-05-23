@@ -57,8 +57,10 @@ actor CodexAppServerClient {
             let data = handle.availableData
             Task { await self?.handleStdout(data) }
         }
-        errP.fileHandleForReading.readabilityHandler = { _ in
-            // stderr は破棄（必要なら Logger に流す）
+        errP.fileHandleForReading.readabilityHandler = { handle in
+            // stderr を捨てるとしても availableData を読まなければ macOS のパイプバッファ
+            // (既定 64 KiB) が解放されず、子プロセスが write(2) でブロックする。必ずドレインする。
+            _ = handle.availableData
         }
 
         do {
@@ -79,6 +81,10 @@ actor CodexAppServerClient {
     func stop() {
         stdout?.fileHandleForReading.readabilityHandler = nil
         stderr?.fileHandleForReading.readabilityHandler = nil
+        // stop() → start() の再起動シーケンスで、旧プロセスの terminationHandler が
+        // 遅延発火 → handleProcessTerminated() が actor に hop → 新プロセスの状態を
+        // 破壊する race を防ぐため、terminate より前にハンドラを解除する。
+        process?.terminationHandler = nil
         if let p = process, p.isRunning {
             p.terminate()
         }
@@ -241,6 +247,12 @@ actor CodexAppServerClient {
     private func handleProcessTerminated() {
         stdout?.fileHandleForReading.readabilityHandler = nil
         stderr?.fileHandleForReading.readabilityHandler = nil
+        // 子プロセスの異常終了 (外部 kill / OOM 等) でこの経路を通る場合、
+        // stop() を介さないため Pipe の fd を明示的に閉じる必要がある。
+        // 閉じないと CodexUsageProvider の再起動ループで fd が累積し枯渇する。
+        try? stdin?.fileHandleForWriting.close()
+        try? stdout?.fileHandleForReading.close()
+        try? stderr?.fileHandleForReading.close()
         process = nil
         stdin = nil
         stdout = nil
