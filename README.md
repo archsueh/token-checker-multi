@@ -81,3 +81,83 @@ defaults delete com.token-checker.app 2>/dev/null
 ## 謝辞
 
 UI のデザインは [s-age/ccmeter](https://github.com/s-age/ccmeter)（MIT License）を参考にした。MIT ライセンスは [`LICENSE`](./LICENSE) に同梱している。
+
+<br>
+
+---
+
+<br>
+
+# Token Checker
+
+A macOS menu bar application that displays Claude Code and Codex usage in real time.
+
+## Overview
+
+For accounts already authenticated via `claude login` / `codex login`, this app retrieves rate-limit information through the Anthropic OAuth endpoint and the `codex app-server` JSON-RPC. Results are shown as two donut charts with numeric values in the menu bar; clicking opens a popover with detailed 5-hour and weekly window data.
+
+## Requirements
+
+| Item | Value |
+| --- | --- |
+| macOS | 14 Sonoma or later |
+| Swift | 5.9 or later (Xcode Command Line Tools is sufficient) |
+| Claude Code CLI | authenticated via `claude login` |
+| Codex CLI | authenticated via `codex login` |
+
+If only one of Claude Code or Codex is available, the other still works.
+
+## Installation
+
+Clone this repository and build on your own machine.
+
+```bash
+./Scripts/build.sh --install
+```
+
+If no Apple Development signing identity is found, ad-hoc signing is used automatically. A `.app` you built yourself can be launched directly.
+
+After installation, open `TokenChecker` from Finder's Applications folder, or run:
+
+```bash
+open /Applications/TokenChecker.app
+```
+
+## Usage
+
+First, log in to both services from the terminal:
+
+```bash
+claude login
+codex login
+```
+
+Each uses a browser-based OAuth flow that saves a token to Keychain or `~/.codex/auth.json`. The app reads the saved tokens, so you only need to log in once via the CLI.
+
+The popover (opened by clicking the menu bar item) shows 5-hour and weekly window utilization, reset countdowns, a refresh-interval picker (30 seconds to 10 minutes, default 5 minutes), and a launch-at-login toggle.
+
+## Data Sources
+
+- **Claude**: retrieves the OAuth access token from Keychain (`Claude Code-credentials`) via `/usr/bin/security`, then issues a GET request to `https://api.anthropic.com/api/oauth/usage` with the `anthropic-beta: oauth-2025-04-20` header.
+- **Codex**: spawns `/opt/homebrew/bin/codex app-server` as a subprocess and calls `account/rateLimits/read` via line-delimited JSON-RPC.
+
+## Uninstall
+
+```bash
+killall TokenChecker
+defaults delete com.token-checker.app 2>/dev/null
+```
+
+## License
+
+Distributed under the [MIT License](./LICENSE).
+
+"Anthropic", "Claude", and "Codex" are trademarks of their respective owners. This software is not an official product of Anthropic or OpenAI, and is not endorsed or approved by either company.
+
+## Disclaimer
+
+This software is provided "as is", without warranty of any kind regarding operation, safety, or accuracy. The author assumes no responsibility for any damages (including but not limited to data loss, account suspension, token leakage, or security incidents) arising from use of this software. Use at your own risk.
+
+## Acknowledgments
+
+The UI design references [s-age/ccmeter](https://github.com/s-age/ccmeter) (MIT License). The full MIT license text is included in [`LICENSE`](./LICENSE).
