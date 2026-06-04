@@ -74,14 +74,19 @@ struct ServiceSectionView: View {
     }
 
     private func secondaryRow(label: String, limit: RateLimit) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text("\(limit.percent)%")
-                .font(.system(size: 11))
-                .foregroundStyle(color(for: limit.utilization))
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(label)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(limit.percent)%")
+                    .font(.system(size: 11))
+                    .foregroundStyle(color(for: limit.utilization))
+            }
+            Text(resetLabel(limit.resetsAt))
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -112,11 +117,19 @@ struct ServiceSectionView: View {
     private func resetLabel(_ date: Date) -> String {
         let now = Date()
         if date <= now { return L("Resets soon") }
+        let interval = date.timeIntervalSince(now)
         let f = DateComponentsFormatter()
-        f.allowedUnits = [.hour, .minute]
         f.unitsStyle = .abbreviated
+        if interval >= 86400 {
+            // Weekly/long window: show remaining days (feature: display days left until weekly token reset)
+            f.allowedUnits = [.day, .hour]
+        } else {
+            f.allowedUnits = [.hour, .minute]
+        }
         let rel = f.string(from: now, to: date) ?? "—"
-        let absolute = DateFormatter.localizedString(from: date, dateStyle: .none, timeStyle: .short)
+        // 长周期（周重置）显示日期+时间，便于知道具体哪天重置；短周期只显示时间
+        let dateStyle: DateFormatter.Style = (interval >= 86400 ? .short : .none)
+        let absolute = DateFormatter.localizedString(from: date, dateStyle: dateStyle, timeStyle: .short)
         return L("%@ left (resets %@)", rel, absolute)
     }
 }
