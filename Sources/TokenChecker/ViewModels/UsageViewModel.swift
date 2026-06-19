@@ -7,6 +7,7 @@ import OSLog
 final class UsageViewModel {
     /// サービス → Provider のマップ（4サービス以上も柔軟に対応）
     private nonisolated let providers: [Service: any UsageProvider]
+    let codeStatsService = CodeStatsService()
 
     var snapshot: UsageSnapshot = .empty
     var isLoading: Bool = false

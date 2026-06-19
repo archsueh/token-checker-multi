@@ -23,12 +23,18 @@ struct UsagePopoverView: View {
             }
 
             Divider()
+
+            // 代码统计
+            CodeStatsPicker(service: viewModel.codeStatsService)
+
+            Divider()
+
             settingsBlock
             Divider()
             footer
         }
         .padding(16)
-        .frame(width: 340) // 少し広げて4サービス対応
+        .frame(width: 360)
     }
 
     private var header: some View {

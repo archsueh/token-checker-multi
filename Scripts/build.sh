@@ -10,6 +10,7 @@
 #   ./Scripts/build.sh --user-install   # 上記＋ ~/Applications にコピー
 #   ./Scripts/build.sh --clean          # 先にビルドキャッシュを掃除
 #   ./Scripts/build.sh --no-sign        # 署名スキップ（推奨しない）
+#   ./Scripts/build.sh --fetch-tokei    # tokei バイナリを取得してバンドル
 # =============================================================================
 set -euo pipefail
 
@@ -19,9 +20,10 @@ APP_BUNDLE="${PRODUCT}.app"
 CONTENTS="${APP_BUNDLE}/Contents"
 MACOS="${CONTENTS}/MacOS"
 RESOURCES="${CONTENTS}/Resources"
-ENTITLEMENTS="Resources/${PRODUCT}.entitlements"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+BIN_DIR="${PROJECT_DIR}/Resources/bin"
+ENTITLEMENTS="Resources/${PRODUCT}.entitlements"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -43,6 +45,7 @@ Options:
   --install        Copy ${PRODUCT}.app to /Applications after building
   --user-install   Copy ${PRODUCT}.app to ~/Applications after building
   --no-sign        Skip codesign (not recommended)
+  --fetch-tokei    Download and bundle tokei binary (arm64)
   -h, --help       Show this help
 EOF
 }
@@ -51,6 +54,7 @@ DO_CLEAN=false
 DO_INSTALL=false
 DO_USER_INSTALL=false
 NO_SIGN=false
+FETCH_TOKEI=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -58,6 +62,7 @@ while [[ $# -gt 0 ]]; do
         --install)      DO_INSTALL=true;      shift ;;
         --user-install) DO_USER_INSTALL=true; shift ;;
         --no-sign)      NO_SIGN=true;         shift ;;
+        --fetch-tokei)  FETCH_TOKEI=true;     shift ;;
         -h|--help)      usage; exit 0 ;;
         *) error "Unknown option: $1"; usage; exit 1 ;;
     esac
@@ -71,12 +76,44 @@ if ${DO_CLEAN}; then
     rm -rf "${APP_BUNDLE}"
 fi
 
+# --- tokei バイナリ取得 ---
+if ${FETCH_TOKEI}; then
+    info "Building tokei from source (cargo)..."
+    mkdir -p "${BIN_DIR}"
+
+    TMP_DIR=$(mktemp -d)
+    trap 'rm -rf "${TMP_DIR}"' EXIT
+
+    info "Cloning tokei..."
+    if git clone --depth 1 --branch "${TOKEI_VERSION:-v14.0.0}" https://github.com/XAMPPRocky/tokei.git "${TMP_DIR}/tokei-src" 2>/dev/null; then
+        cd "${TMP_DIR}/tokei-src"
+        info "Building tokei with cargo (release)..."
+        if cargo build --release 2>&1 | tail -5; then
+            if [[ -f "target/release/tokei" ]]; then
+                cp "target/release/tokei" "${BIN_DIR}/tokei"
+                chmod +x "${BIN_DIR}/tokei"
+                info "tokei binary placed at ${BIN_DIR}/tokei"
+            else
+                error "tokei binary not found after build"
+                exit 1
+            fi
+        else
+            error "cargo build failed"
+            exit 1
+        fi
+    else
+        error "Failed to clone tokei repo"
+        exit 1
+    fi
+    cd "${PROJECT_DIR}"
+fi
+
 info "Building ${PRODUCT} (release)..."
 swift build -c release
 
 info "Assembling ${APP_BUNDLE}..."
 rm -rf "${APP_BUNDLE}"
-mkdir -p "${MACOS}" "${RESOURCES}"
+mkdir -p "${MACOS}" "${RESOURCES}" "${BIN_DIR}"
 cp "${BUILD_DIR}/${PRODUCT}" "${MACOS}/"
 cp Resources/Info.plist "${CONTENTS}/"
 # Info.plist の CFBundleIconFile=AppIcon は無条件のため、.icns 不在を静かに通さない．
@@ -85,6 +122,20 @@ if [[ ! -f Resources/AppIcon.icns ]]; then
     exit 1
 fi
 cp Resources/AppIcon.icns "${RESOURCES}/"
+
+# tokei バイナリを新しいバンドルにコピー
+mkdir -p "${RESOURCES}/bin"
+if [[ -f "${BIN_DIR}/tokei" ]]; then
+    cp "${BIN_DIR}/tokei" "${RESOURCES}/bin/tokei"
+    chmod +x "${RESOURCES}/bin/tokei"
+    info "tokei binary copied to bundle"
+elif ${FETCH_TOKEI}; then
+    # --fetch-tokei 指定で取得できなかった場合は上で exit している
+    :
+else
+    warn "tokei binary not found at ${BIN_DIR}/tokei"
+    warn "Run with --fetch-tokei to download automatically, or place manually."
+fi
 
 # Localization catalogs: copy each *.lproj into the bundle Resources so
 # NSLocalizedString (main bundle) resolves per the user's system language.
