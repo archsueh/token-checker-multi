@@ -193,6 +193,7 @@ if ${DO_INSTALL}; then
     rm -rf "/Applications/${APP_BUNDLE}"
     cp -R "${APP_BUNDLE}" "/Applications/"
     info "Installed to /Applications/${APP_BUNDLE}"
+    rm -rf "${APP_BUNDLE}"
 fi
 
 if ${DO_USER_INSTALL}; then
@@ -201,6 +202,11 @@ if ${DO_USER_INSTALL}; then
     rm -rf "${HOME}/Applications/${APP_BUNDLE}"
     cp -R "${APP_BUNDLE}" "${HOME}/Applications/"
     info "Installed to ${HOME}/Applications/${APP_BUNDLE}"
+    rm -rf "${APP_BUNDLE}"
 fi
 
-info "Built ${APP_BUNDLE}"
+if ! ${DO_INSTALL} && ! ${DO_USER_INSTALL}; then
+    info "Built ${APP_BUNDLE}"
+else
+    info "Built and installed ${APP_BUNDLE}, cleaned local temporary bundle."
+fi
